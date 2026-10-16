@@ -1,0 +1,816 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Image Effects</title>
+<style>
+  :root {
+    --bg: #fafafa; --ink: #111; --muted: #8a8a8a; --line: #d9d9d9; --chip: #efefef; --stage: #f1f1f1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111; --ink: #f2f2f2; --muted: #8d8d8d; --line: #333; --chip: #1f1f1f; --stage: #181818; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 14px/1.4 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: grid; grid-template-columns: 394px 1fr; grid-template-rows: 64px 1fr; height: 100vh;
+  }
+  nav {
+    grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; padding: 0 22px;
+    border-bottom: 1px solid var(--line);
+  }
+  nav .brand { font-weight: 600; font-size: 14px; margin-right: 8px; }
+  aside { padding: 28px 22px 40px; overflow-y: auto; min-height: 0; }
+  h3 { font-size: 13px; font-weight: 500; margin: 0 0 20px; }
+  section { margin-bottom: 34px; }
+  .hint { color: var(--muted); font-size: 13px; margin: 0; }
+  .hint b { color: var(--ink); font-weight: 500; }
+  .hint u { cursor: pointer; color: var(--ink); text-underline-offset: 2px; }
+
+  .seg { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 999px; background: var(--chip); }
+  .seg button {
+    border: 0; border-radius: 999px; padding: 0 22px; height: 40px; cursor: pointer;
+    background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 500;
+    transition: background .2s, color .2s;
+  }
+  .seg.sm button { padding: 0 13px; height: 34px; }
+  .seg.fill { display: flex; }
+  .seg.fill button { flex: 1; padding: 0 6px; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+  .swatch { position: relative; }
+  .swatch input[type=color] { width: 48px; height: 48px; border: 0; padding: 0; background: none; cursor: pointer; border-radius: 50%; overflow: hidden; }
+  .swatch input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+  .swatch input[type=color]::-webkit-color-swatch { border: 0; border-radius: 50%; }
+  .swatch button {
+    position: absolute; top: -4px; right: -4px; width: 18px; height: 18px; border-radius: 50%; border: 0; padding: 0;
+    background: var(--ink); color: var(--bg); font-size: 12px; line-height: 18px; cursor: pointer;
+  }
+  .swatch button:disabled { display: none; }
+  .field.on { box-shadow: inset 0 0 0 1.5px var(--ink); }
+  .seg button.on { background: var(--ink); color: var(--bg); }
+
+  .row { margin-bottom: 14px; }
+  .row .top { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; }
+  .row .top output { font-variant-numeric: tabular-nums; }
+  .row.disabled { opacity: .45; pointer-events: none; }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 22px; margin: 2px 0 0;
+    background: transparent; cursor: pointer; display: block;
+  }
+  input[type=range]::-webkit-slider-runnable-track { height: 1px; background: var(--line); }
+  input[type=range]::-moz-range-track { height: 1px; background: var(--line); }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 9px; height: 9px; border-radius: 50%; background: var(--ink); margin-top: -4px; border: 0;
+  }
+  input[type=range]::-moz-range-thumb { width: 9px; height: 9px; border-radius: 50%; background: var(--ink); border: 0; }
+
+  .actions { display: flex; gap: 8px; margin-top: 8px; }
+  .actions button {
+    flex: 1; height: 40px; border-radius: 999px; border: 0; cursor: pointer;
+    font: inherit; font-size: 13px; font-weight: 500; background: var(--chip); color: var(--ink);
+  }
+  .actions button.primary { background: var(--ink); color: var(--bg); }
+  .actions button:disabled { opacity: .4; cursor: default; }
+
+  main { padding: 22px; min-width: 0; min-height: 0; }
+  #stage {
+    position: relative; height: 100%; border-radius: 20px; background: var(--stage);
+    display: grid; place-items: center; overflow: hidden; cursor: pointer;
+    outline: 2px dashed transparent; outline-offset: -10px; transition: outline-color .15s;
+  }
+  #stage.drag { outline-color: var(--muted); }
+  #stage.has-image { cursor: default; }
+  canvas { max-width: 100%; max-height: 100%; display: none; }
+  .has-image canvas { display: block; }
+  #empty { color: var(--muted); text-align: center; font-size: 13px; pointer-events: none; }
+  .has-image #empty { display: none; }
+  #file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  [hidden] { display: none !important; }
+  .field {
+    width: 100%; height: 40px; border: 0; border-radius: 999px; padding: 0 16px; background: var(--chip);
+    color: var(--ink); font: 13px ui-monospace, Consolas, monospace; outline: none;
+  }
+  .colors { display: flex; gap: 16px; margin-top: 16px; }
+  .colors label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+  .colors input[type=color] { width: 36px; height: 28px; border: 0; padding: 0; background: none; cursor: pointer; border-radius: 6px; }
+
+  @media (max-width: 800px) {
+    body { grid-template-columns: 1fr; grid-template-rows: 64px auto auto; height: auto; min-height: 100vh; }
+    aside { order: 3; }
+    main { order: 2; padding: 16px; }
+    #stage { height: 55vh; }
+  }
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">Effects</span>
+  <div class="seg" id="tabs">
+    <button class="on" data-tool="blur">Motion Blur</button>
+    <button data-tool="pixel">Pixelate</button>
+    <button data-tool="ascii">ASCII</button>
+    <button data-tool="gradient">Gradient</button>
+  </div>
+</nav>
+
+<aside>
+  <section id="sec-image">
+    <h3>Image</h3>
+    <p class="hint"><u id="choose">Choose one</u> on the frame, drop it there, or paste with Ctrl/Cmd+V.</p>
+  </section>
+
+  <!-- ===== MOTION BLUR ===== -->
+  <div id="tool-blur">
+    <section>
+      <h3>Color</h3>
+      <div class="seg" data-key="mode">
+        <button class="on" data-val="bw">Black &amp; White</button>
+        <button data-val="color">Color</button>
+      </div>
+    </section>
+    <section>
+      <h3>Blur</h3>
+      <div class="row"><div class="top"><span>Amount</span><output></output></div><input type="range" id="blur" min="0" max="100" value="40" data-fmt="%"></div>
+      <p class="hint">Always horizontal, at <b>0°</b>. Grain is pinned at <b>20%</b>.</p>
+    </section>
+    <section>
+      <h3>Tone</h3>
+      <div class="row"><div class="top"><span>Contrast</span><output></output></div><input type="range" id="contrast" min="-100" max="100" value="0"></div>
+      <div class="row"><div class="top"><span>Brightness</span><output></output></div><input type="range" id="brightness" min="-100" max="100" value="0"></div>
+      <div class="row"><div class="top"><span>Shadows</span><output></output></div><input type="range" id="shadows" min="-100" max="100" value="0"></div>
+    </section>
+    <section>
+      <h3>White balance</h3>
+      <div id="wb">
+        <div class="row"><div class="top"><span>Temperature</span><output></output></div><input type="range" id="temperature" min="-100" max="100" value="0"></div>
+        <div class="row"><div class="top"><span>Tint</span><output></output></div><input type="range" id="tint" min="-100" max="100" value="0"></div>
+      </div>
+      <p class="hint">Cooler to warmer, and green to magenta. <b>Color</b> mode only.</p>
+    </section>
+  </div>
+
+  <!-- ===== PIXELATE ===== -->
+  <div id="tool-pixel" hidden>
+    <section>
+      <h3>Direction</h3>
+      <div class="seg sm" data-key="dir">
+        <button data-val="left">Left</button>
+        <button class="on" data-val="right">Right</button>
+        <button data-val="top">Top</button>
+        <button data-val="bottom">Bottom</button>
+      </div>
+      <p class="hint" style="margin-top:12px">The side where pixels are <b>fully present</b>. They thin out toward the opposite side.</p>
+    </section>
+    <section>
+      <h3>Shape</h3>
+      <div class="seg sm" data-key="shape">
+        <button class="on" data-val="rect">Rectangle</button>
+        <button data-val="ellipse">Ellipse</button>
+        <button data-val="hex">Hexagon</button>
+        <button data-val="tri">Triangle</button>
+      </div>
+    </section>
+    <section>
+      <h3>Cells</h3>
+      <div class="row"><div class="top"><span>Size</span><output></output></div><input type="range" id="p-size" min="1" max="100" value="25"></div>
+      <div class="row"><div class="top"><span>Stretch</span><output></output></div><input type="range" id="p-stretch" min="-100" max="100" value="0"></div>
+      <div class="row"><div class="top"><span>Gap</span><output></output></div><input type="range" id="p-gap" min="0" max="100" value="10"></div>
+    </section>
+    <section>
+      <h3>Color</h3>
+      <div class="row"><div class="top"><span>Color trim</span><output></output></div><input type="range" id="p-trim" min="-100" max="100" value="0"></div>
+      <p class="hint" style="margin-bottom:16px">Positive removes <b>dark</b> cells, negative removes <b>light</b> ones.</p>
+      <div class="top" style="color:var(--muted);font-size:13px;margin-bottom:10px">Average color</div>
+      <div class="seg sm" data-key="avg">
+        <button class="on" data-val="on">On</button>
+        <button data-val="off">Off</button>
+      </div>
+    </section>
+    <section>
+      <h3>Dissolve</h3>
+      <div class="top" style="color:var(--muted);font-size:13px;margin-bottom:10px">Dissolve mode</div>
+      <div class="seg sm" data-key="dmode" style="margin-bottom:18px">
+        <button class="on" data-val="random">Random</button>
+        <button data-val="dither">Dither</button>
+        <button data-val="shrink">Shrink</button>
+        <button data-val="fade">Fade</button>
+      </div>
+      <div class="row"><div class="top"><span>Dissolve</span><output></output></div><input type="range" id="p-dissolve" min="0" max="100" value="50"></div>
+      <div class="row"><div class="top"><span>Falloff</span><output></output></div><input type="range" id="p-falloff" min="0" max="100" value="50"></div>
+      <p class="hint">Dissolve scatters stray cells into the empty side. Falloff sets how far the pixels reach.</p>
+    </section>
+  </div>
+
+  <!-- ===== ASCII ===== -->
+  <div id="tool-ascii" hidden>
+    <section>
+      <h3>Characters</h3>
+      <div class="seg sm fill" data-key="aset">
+        <button class="on" data-val="classic">Classic</button>
+        <button data-val="blocks">Blocks</button>
+        <button data-val="dots">Dots</button>
+        <button data-val="binary">Binary</button>
+      </div>
+      <input type="text" id="a-chars" value="@#8&amp;o:*. " spellcheck="false" class="field" style="margin-top:8px" placeholder="Or type your own set…">
+      <p class="hint" style="margin-top:10px">Type your own set, ordered from <b>densest</b> to <b>sparsest</b> glyph. Pick a preset above to switch back.</p>
+    </section>
+    <section>
+      <h3>Grid</h3>
+      <div class="row"><div class="top"><span>Size</span><output></output></div><input type="range" id="a-size" min="1" max="100" value="30"></div>
+      <div class="row"><div class="top"><span>Stretch</span><output></output></div><input type="range" id="a-stretch" min="-100" max="100" value="0"></div>
+      <div class="row"><div class="top"><span>Noise</span><output></output></div><input type="range" id="a-noise" min="0" max="100" value="0"></div>
+      <div class="top" style="color:var(--muted);font-size:13px;margin:6px 0 10px">Font</div>
+      <div class="seg sm" data-key="afont" style="margin-bottom:10px">
+        <button class="on" data-val="mono">Mono</button>
+        <button data-val="serif">Serif</button>
+        <button data-val="sans">Sans</button>
+      </div>
+      <div class="seg sm" data-key="aweight">
+        <button class="on" data-val="400">Regular</button>
+        <button data-val="700">Bold</button>
+      </div>
+    </section>
+    <section>
+      <h3>Tone</h3>
+      <div class="row"><div class="top"><span>Contrast</span><output></output></div><input type="range" id="a-contrast" min="-100" max="100" value="0"></div>
+      <div class="row"><div class="top"><span>Brightness</span><output></output></div><input type="range" id="a-brightness" min="-100" max="100" value="0"></div>
+      <div class="row"><div class="top"><span>Gamma</span><output></output></div><input type="range" id="a-gamma" min="-100" max="100" value="0"></div>
+      <div class="top" style="color:var(--muted);font-size:13px;margin:6px 0 10px">Invert</div>
+      <div class="seg sm" data-key="ainv">
+        <button class="on" data-val="off">Off</button>
+        <button data-val="on">On</button>
+      </div>
+    </section>
+    <section>
+      <h3>Color</h3>
+      <div class="seg sm" data-key="acolor">
+        <button class="on" data-val="mono">Mono</button>
+        <button data-val="original">Original</button>
+        <button data-val="gradient">Gradient</button>
+      </div>
+      <div class="colors">
+        <label>Text <input type="color" id="a-fg" value="#111111"></label>
+        <label>Background <input type="color" id="a-bg" value="#f4f4f4"></label>
+      </div>
+      <div class="seg sm" data-key="abg" style="margin-top:14px">
+        <button class="on" data-val="solid">Solid background</button>
+        <button data-val="none">Transparent</button>
+      </div>
+      <p class="hint" style="margin-top:12px"><b>Gradient</b> blends background → text color by brightness.</p>
+    </section>
+    <section>
+      <h3>Reveal</h3>
+      <div class="seg sm" data-key="adir">
+        <button class="on" data-val="none">Off</button>
+        <button data-val="left">Left</button>
+        <button data-val="right">Right</button>
+        <button data-val="top">Top</button>
+        <button data-val="bottom">Bottom</button>
+      </div>
+      <div class="row" style="margin-top:18px"><div class="top"><span>Falloff</span><output></output></div><input type="range" id="a-falloff" min="0" max="100" value="50"></div>
+      <p class="hint">Characters fade in from the chosen side; the original image shows on the other.</p>
+    </section>
+  </div>
+
+  <!-- ===== GRADIENT ===== -->
+  <div id="tool-gradient" hidden>
+    <section>
+      <h3>Type</h3>
+      <div class="seg sm fill" data-key="gtype">
+        <button class="on" data-val="linear">Linear</button>
+        <button data-val="radial">Radial</button>
+        <button data-val="conic">Conic</button>
+        <button data-val="mesh">Mesh</button>
+      </div>
+    </section>
+    <section>
+      <h3>Colors</h3>
+      <div id="g-colors" class="swatches"></div>
+      <div class="actions" style="margin-top:12px"><button id="g-add">+ Add color</button></div>
+    </section>
+    <section>
+      <h3>Shape</h3>
+      <div class="row" data-for="linear conic"><div class="top"><span>Angle</span><output></output></div><input type="range" id="g-angle" min="0" max="360" value="135" data-fmt="°"></div>
+      <div class="row" data-for="radial conic"><div class="top"><span>Center X</span><output></output></div><input type="range" id="g-cx" min="0" max="100" value="50" data-fmt="%"></div>
+      <div class="row" data-for="radial conic"><div class="top"><span>Center Y</span><output></output></div><input type="range" id="g-cy" min="0" max="100" value="50" data-fmt="%"></div>
+      <div class="row" data-for="linear radial"><div class="top"><span>Spread</span><output></output></div><input type="range" id="g-spread" min="20" max="300" value="100" data-fmt="%"></div>
+      <div class="row" data-for="mesh"><div class="top"><span>Seed</span><output></output></div><input type="range" id="g-seed" min="1" max="100" value="7"></div>
+      <div class="row" data-for="mesh"><div class="top"><span>Softness</span><output></output></div><input type="range" id="g-soft" min="0" max="100" value="50"></div>
+      <div class="top" style="color:var(--muted);font-size:13px;margin:6px 0 10px">Format</div>
+      <div class="seg sm fill" data-key="gaspect">
+        <button data-val="1:1">1:1</button>
+        <button data-val="4:3">4:3</button>
+        <button class="on" data-val="16:9">16:9</button>
+        <button data-val="9:16">9:16</button>
+      </div>
+    </section>
+    <section>
+      <h3>Grain</h3>
+      <div class="row"><div class="top"><span>Amount</span><output></output></div><input type="range" id="g-grain" min="0" max="100" value="30" data-fmt="%"></div>
+      <div class="row"><div class="top"><span>Size</span><output></output></div><input type="range" id="g-grainsize" min="0" max="100" value="15"></div>
+      <div class="seg sm" data-key="ggrain" style="margin-top:6px">
+        <button class="on" data-val="mono">Monochrome</button>
+        <button data-val="color">Colored</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="actions">
+    <button id="reset">Reset</button>
+    <button id="download" class="primary" disabled>Download PNG</button>
+  </div>
+</aside>
+
+<main>
+  <div id="stage">
+    <div id="empty">Click to choose an image,<br>drop it here, or paste (Ctrl/Cmd+V)</div>
+    <canvas id="cv"></canvas>
+  </div>
+  <input type="file" id="file" accept="image/*">
+</main>
+
+<script>
+const GRAIN = 0.20, PREVIEW_MAX = 1400, EXPORT_MAX = 4096, BLUR_MAX_FRAC = 0.25;
+const $ = id => document.getElementById(id);
+const stage = $('stage'), cv = $('cv');
+
+const defaultState = {
+  mode: 'bw', dir: 'right', shape: 'rect', avg: 'on', dmode: 'random',
+  aset: 'classic', afont: 'mono', aweight: '400', ainv: 'off', acolor: 'mono', abg: 'solid', adir: 'none',
+  gtype: 'linear', gaspect: '16:9', ggrain: 'mono',
+};
+const defaultColors = ['#ff9a62', '#ff3d81', '#3b2bff'];
+const state = { tool: 'blur', img: null, gcolors: [...defaultColors], ...defaultState };
+const toolInputs = {
+  blur: ['blur', 'contrast', 'brightness', 'shadows', 'temperature', 'tint'],
+  pixel: ['p-size', 'p-stretch', 'p-gap', 'p-trim', 'p-dissolve', 'p-falloff'],
+  ascii: ['a-chars', 'a-size', 'a-stretch', 'a-noise', 'a-contrast', 'a-brightness', 'a-gamma', 'a-fg', 'a-bg', 'a-falloff'],
+  gradient: ['g-angle', 'g-cx', 'g-cy', 'g-spread', 'g-seed', 'g-soft', 'g-grain', 'g-grainsize'],
+};
+const toolKeys = {
+  blur: ['mode'], pixel: ['dir', 'shape', 'avg', 'dmode'],
+  ascii: ['aset', 'afont', 'aweight', 'ainv', 'acolor', 'abg', 'adir'],
+  gradient: ['gtype', 'gaspect', 'ggrain'],
+};
+const sliderDefaults = {};
+document.querySelectorAll('aside input').forEach(r => sliderDefaults[r.id] = r.value);
+['a-fg', 'a-bg'].forEach(id => $(id).addEventListener('input', schedule));
+$('a-chars').addEventListener('input', () => { state.aset = 'custom'; refreshSegs(); schedule(); });
+const v = id => +$(id).value;
+
+// ---------- UI ----------
+function refreshOutputs() {
+  document.querySelectorAll('input[type=range]').forEach(r => {
+    r.closest('.row').querySelector('output').textContent = r.value + (r.dataset.fmt || '');
+  });
+}
+function refreshSegs() {
+  document.querySelectorAll('.seg[data-key]').forEach(seg => {
+    seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.val === state[seg.dataset.key]));
+  });
+  $('a-chars').classList.toggle('on', state.aset === 'custom');
+  document.querySelectorAll('[data-for]').forEach(el => el.hidden = !el.dataset.for.split(' ').includes(state.gtype));
+  document.querySelectorAll('#wb .row').forEach(r => r.classList.toggle('disabled', state.mode !== 'color'));
+}
+function refreshTabs() {
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tool === state.tool));
+  $('tool-blur').hidden = state.tool !== 'blur';
+  $('tool-pixel').hidden = state.tool !== 'pixel';
+  $('tool-ascii').hidden = state.tool !== 'ascii';
+  $('tool-gradient').hidden = state.tool !== 'gradient';
+  $('sec-image').hidden = state.tool === 'gradient';
+  stage.classList.toggle('has-image', ready());
+  $('download').disabled = !ready();
+}
+function buildColors() {
+  const box = $('g-colors'); box.innerHTML = '';
+  state.gcolors.forEach((col, i) => {
+    const w = document.createElement('div'); w.className = 'swatch';
+    const inp = document.createElement('input'); inp.type = 'color'; inp.value = col;
+    inp.addEventListener('input', () => { state.gcolors[i] = inp.value; schedule(); });
+    const rm = document.createElement('button'); rm.textContent = '×'; rm.title = 'Remove';
+    rm.disabled = state.gcolors.length <= 2;
+    rm.addEventListener('click', () => { state.gcolors.splice(i, 1); buildColors(); schedule(); });
+    w.append(inp, rm); box.append(w);
+  });
+  $('g-add').disabled = state.gcolors.length >= 6;
+}
+$('g-add').addEventListener('click', () => {
+  const last = state.gcolors[state.gcolors.length - 1];
+  state.gcolors.push(last); buildColors(); schedule();
+});
+document.querySelectorAll('input[type=range]').forEach(r => r.addEventListener('input', () => { refreshOutputs(); schedule(); }));
+document.querySelectorAll('.seg[data-key]').forEach(seg => seg.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  state[seg.dataset.key] = b.dataset.val; refreshSegs(); schedule();
+}));
+$('tabs').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.tool = b.dataset.tool; refreshTabs(); schedule();
+});
+$('reset').addEventListener('click', () => {
+  toolInputs[state.tool].forEach(id => $(id).value = sliderDefaults[id]);
+  toolKeys[state.tool].forEach(k => state[k] = defaultState[k]);
+  if (state.tool === 'gradient') { state.gcolors = [...defaultColors]; buildColors(); }
+  refreshSegs(); refreshOutputs(); schedule();
+});
+
+// ---------- Image input ----------
+stage.addEventListener('click', () => { if (!state.img && state.tool !== 'gradient') $('file').click(); });
+$('choose').addEventListener('click', () => $('file').click());
+$('file').addEventListener('change', e => { const f = e.target.files[0]; if (f) loadFile(f); e.target.value = ''; });
+['dragenter', 'dragover'].forEach(t => window.addEventListener(t, e => { e.preventDefault(); stage.classList.add('drag'); }));
+['dragleave', 'drop'].forEach(t => window.addEventListener(t, e => { e.preventDefault(); stage.classList.remove('drag'); }));
+window.addEventListener('drop', e => {
+  const f = [...e.dataTransfer.files].find(f => f.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(f.name));
+  if (f) loadFile(f);
+});
+window.addEventListener('paste', e => {
+  const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+  if (item) loadFile(item.getAsFile());
+});
+cv.addEventListener('dblclick', () => { if (state.tool !== 'gradient') $('file').click(); });
+
+function loadFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onerror = () => alert('Could not read that file.');
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      state.img = img; satCache = null; refreshTabs();
+      schedule();
+    };
+    img.onerror = () => alert('That file could not be opened as an image.');
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ---------- Shared ----------
+function getSource(maxEdge) {
+  const img = state.img;
+  const s = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.max(1, Math.round(img.naturalWidth * s)), h = Math.max(1, Math.round(img.naturalHeight * s));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.drawImage(img, 0, 0, w, h);
+  return { w, h, data: x.getImageData(0, 0, w, h) };
+}
+const clamp = (x, a, b) => x < a ? a : x > b ? b : x;
+
+// ---------- Motion blur ----------
+function hBlur(src, w, h, radius) {
+  if (radius < 1) return new Uint8ClampedArray(src);
+  const out = new Uint8ClampedArray(src.length), n = 2 * radius + 1;
+  for (let y = 0; y < h; y++) {
+    const row = y * w * 4;
+    for (let c = 0; c < 3; c++) {
+      let sum = 0;
+      for (let i = -radius; i <= radius; i++) sum += src[row + Math.min(w - 1, Math.max(0, i)) * 4 + c];
+      for (let x = 0; x < w; x++) {
+        out[row + x * 4 + c] = sum / n;
+        const add = Math.min(w - 1, x + radius + 1), rem = Math.max(0, x - radius);
+        sum += src[row + add * 4 + c] - src[row + rem * 4 + c];
+      }
+    }
+    for (let x = 0; x < w; x++) out[row + x * 4 + 3] = 255;
+  }
+  return out;
+}
+let noise = new Float32Array(0);
+function ensureNoise(len) {
+  if (noise.length >= len) return;
+  noise = new Float32Array(len);
+  let s = 1234567;
+  const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  for (let i = 0; i < len; i++) noise[i] = (rnd() + rnd() + rnd() - 1.5) * 2;
+}
+function renderBlur(target, maxEdge) {
+  const { w, h, data } = getSource(maxEdge);
+  const p = {
+    blur: v('blur') / 100, contrast: v('contrast') / 100, brightness: v('brightness') / 100,
+    shadows: v('shadows') / 100, temp: v('temperature') / 100, tint: v('tint') / 100,
+  };
+  const px = hBlur(data.data, w, h, Math.round(p.blur * BLUR_MAX_FRAC * w));
+  const bw = state.mode === 'bw', cf = 1 + p.contrast;
+  ensureNoise(w * h);
+  for (let i = 0, k = 0; i < px.length; i += 4, k++) {
+    let r = px[i], g = px[i + 1], b = px[i + 2];
+    if (bw) { r = g = b = 0.2126 * r + 0.7152 * g + 0.0722 * b; }
+    else { r += p.temp * 40 + p.tint * 12; b += -p.temp * 40 + p.tint * 12; g -= p.tint * 30; }
+    const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    const add = p.brightness * 90 + p.shadows * 70 * (1 - lum) * (1 - lum);
+    r = (r - 128) * cf + 128 + add; g = (g - 128) * cf + 128 + add; b = (b - 128) * cf + 128 + add;
+    const n = noise[k] * GRAIN * 22;
+    px[i] = r + n; px[i + 1] = g + n; px[i + 2] = b + n; px[i + 3] = 255;
+  }
+  target.width = w; target.height = h;
+  target.getContext('2d').putImageData(new ImageData(px, w, h), 0, 0);
+}
+
+// ---------- Pixelate ----------
+let satCache = null;
+function getSAT() {
+  if (satCache) return satCache;
+  const { w, h, data } = getSource(PREVIEW_MAX), d = data.data, W1 = w + 1;
+  const sat = new Float64Array(W1 * (h + 1) * 3);
+  for (let y = 0; y < h; y++) {
+    let r = 0, g = 0, b = 0;
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      r += d[i]; g += d[i + 1]; b += d[i + 2];
+      const o = ((y + 1) * W1 + x + 1) * 3, u = (y * W1 + x + 1) * 3;
+      sat[o] = sat[u] + r; sat[o + 1] = sat[u + 1] + g; sat[o + 2] = sat[u + 2] + b;
+    }
+  }
+  return satCache = { w, h, sat };
+}
+const col = [0, 0, 0];
+function sample(S, x0, y0, x1, y1) {
+  const W1 = S.w + 1;
+  const ix0 = clamp(Math.floor(x0), 0, S.w - 1), iy0 = clamp(Math.floor(y0), 0, S.h - 1);
+  const ix1 = clamp(Math.ceil(x1), ix0 + 1, S.w), iy1 = clamp(Math.ceil(y1), iy0 + 1, S.h);
+  const area = (ix1 - ix0) * (iy1 - iy0), s = S.sat;
+  for (let c = 0; c < 3; c++) {
+    col[c] = (s[(iy1 * W1 + ix1) * 3 + c] - s[(iy1 * W1 + ix0) * 3 + c] - s[(iy0 * W1 + ix1) * 3 + c] + s[(iy0 * W1 + ix0) * 3 + c]) / area;
+  }
+}
+function hash(i, j) {
+  let h = Math.imul(i, 374761393) + Math.imul(j, 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+const bayer = (() => {
+  let m = [[0]];
+  while (m.length < 8) {
+    const n = m.length, o = [];
+    for (let y = 0; y < n * 2; y++) { o.push([]); for (let x = 0; x < n * 2; x++) {
+      const b = m[y % n][x % n] * 4; o[y].push(b + [[0, 2], [3, 1]][Math.floor(y / n)][Math.floor(x / n)]);
+    } }
+    m = o;
+  }
+  return m.flat().map(x => (x + 0.5) / 64);
+})();
+
+function renderPixel(target, outMax) {
+  const S = getSAT(), img = state.img;
+  const sc = Math.min(1, outMax / Math.max(img.naturalWidth, img.naturalHeight));
+  const W = Math.max(1, Math.round(img.naturalWidth * sc)), H = Math.max(1, Math.round(img.naturalHeight * sc));
+  const kx = S.w / W, ky = S.h / H;
+  target.width = W; target.height = H;
+  const c = target.getContext('2d');
+  c.clearRect(0, 0, W, H);
+
+  // parameters
+  const dir = state.dir, shape = state.shape, avg = state.avg === 'on', dmode = state.dmode;
+  const cs = W * (0.006 + v('p-size') / 100 * 0.1);
+  const st = v('p-stretch'), ratio = st >= 0 ? 1 + st / 25 : 1 / (1 + -st / 25);
+  const cw = cs * Math.sqrt(ratio), ch = cs / Math.sqrt(ratio);
+  const gap = v('p-gap'), gs = gap === 0 ? 1.02 : 1 - gap / 100 * 0.9;
+  const trim = v('p-trim') / 100, delta = v('p-dissolve') / 100 * 2;
+  const g = Math.pow(2, (50 - v('p-falloff')) / 25);
+  const along = (x, y) => clamp(dir === 'right' ? x / W : dir === 'left' ? 1 - x / W : dir === 'top' ? 1 - y / H : y / H, 0, 1);
+
+  // original image underneath, fading out toward the pixel side
+  const u = document.createElement('canvas'); u.width = W; u.height = H;
+  const ux = u.getContext('2d');
+  ux.drawImage(img, 0, 0, W, H);
+  ux.globalCompositeOperation = 'destination-in';
+  const [x0, y0, x1, y1] = dir === 'right' ? [0, 0, W, 0] : dir === 'left' ? [W, 0, 0, 0] : dir === 'top' ? [0, H, 0, 0] : [0, 0, 0, H];
+  const grad = ux.createLinearGradient(x0, y0, x1, y1);
+  for (let k = 0; k <= 16; k++) grad.addColorStop(k / 16, `rgba(0,0,0,${1 - Math.pow(k / 16, g)})`);
+  ux.fillStyle = grad; ux.fillRect(0, 0, W, H);
+  c.drawImage(u, 0, 0);
+
+  // one cell: decide visibility, color, then draw
+  function cell(i, j, cx, cy, sx0, sy0, sx1, sy1, draw) {
+    const L = Math.pow(along(cx, cy), g);
+    const n = dmode === 'dither' ? bayer[(j & 7) * 8 + (i & 7)] : hash(i, j);
+    const e = L + (n - 0.5) * delta;
+    let alpha = 1, s = gs;
+    if (dmode === 'fade') alpha = clamp(e, 0, 1);
+    else if (dmode === 'shrink') s *= clamp(e, 0, 1);
+    else if (e <= 0.5) return;
+    if (alpha < 0.01 || s < 0.01) return;
+    if (avg) sample(S, sx0 * kx, sy0 * ky, sx1 * kx, sy1 * ky);
+    else sample(S, cx * kx, cy * ky, cx * kx + 1, cy * ky + 1);
+    const lum = (0.2126 * col[0] + 0.7152 * col[1] + 0.0722 * col[2]) / 255;
+    if (trim > 0 && lum < trim) return;
+    if (trim < 0 && lum > 1 + trim) return;
+    c.globalAlpha = alpha;
+    c.fillStyle = `rgb(${col[0] | 0},${col[1] | 0},${col[2] | 0})`;
+    draw(s);
+  }
+  const poly = (cx, cy, pts, s) => {
+    c.beginPath();
+    pts.forEach(([px, py], k) => { const X = cx + (px - cx) * s, Y = cy + (py - cy) * s; k ? c.lineTo(X, Y) : c.moveTo(X, Y); });
+    c.closePath(); c.fill();
+  };
+
+  if (shape === 'rect' || shape === 'ellipse') {
+    for (let j = 0; j * ch < H; j++) for (let i = 0; i * cw < W; i++) {
+      const X = i * cw, Y = j * ch, cx = X + cw / 2, cy = Y + ch / 2;
+      cell(i, j, cx, cy, X, Y, X + cw, Y + ch, s => {
+        if (shape === 'rect') c.fillRect(cx - cw * s / 2, cy - ch * s / 2, cw * s, ch * s);
+        else { c.beginPath(); c.ellipse(cx, cy, cw * s / 2, ch * s / 2, 0, 0, Math.PI * 2); c.fill(); }
+      });
+    }
+  } else if (shape === 'hex') {
+    const h = ch * 2 / Math.sqrt(3), pitch = h * 0.75;
+    for (let j = 0; j * pitch < H + h; j++) for (let i = -1; i * cw < W + cw; i++) {
+      const cx = i * cw + (j & 1 ? cw / 2 : 0), cy = j * pitch;
+      cell(i, j, cx, cy, cx - cw / 2, cy - h / 2, cx + cw / 2, cy + h / 2, s => poly(cx, cy, [
+        [cx, cy - h / 2], [cx + cw / 2, cy - h / 4], [cx + cw / 2, cy + h / 4],
+        [cx, cy + h / 2], [cx - cw / 2, cy + h / 4], [cx - cw / 2, cy - h / 4]], s));
+    }
+  } else {
+    const w = cw * 2 / Math.sqrt(3), h = ch;
+    for (let j = 0; j * h < H; j++) for (let i = -1; i * w / 2 < W + w; i++) {
+      const up = (((i + j) % 2) + 2) % 2 === 0, top = j * h, cx = i * w / 2, cy = up ? top + h * 2 / 3 : top + h / 3;
+      cell(i, j, cx, cy, cx - w / 4, cy - h / 6, cx + w / 4, cy + h / 6, s => poly(cx, cy, up
+        ? [[cx - w / 2, top + h], [cx + w / 2, top + h], [cx, top]]
+        : [[cx - w / 2, top], [cx + w / 2, top], [cx, top + h]], s));
+    }
+  }
+  c.globalAlpha = 1;
+}
+
+// ---------- ASCII ----------
+const CHARSETS = {
+  classic: '@%#*+=-:. ',
+  blocks: '█▓▒░ ',
+  dots: '●•◦·. ',
+  binary: '10 ',
+};
+const FONTS = {
+  mono: 'ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace',
+  serif: 'Georgia, "Times New Roman", serif',
+  sans: 'Inter, "Segoe UI", Arial, sans-serif',
+};
+const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+
+function renderAscii(target, outMax) {
+  const S = getSAT(), img = state.img;
+  const sc = Math.min(1, outMax / Math.max(img.naturalWidth, img.naturalHeight));
+  const W = Math.max(1, Math.round(img.naturalWidth * sc)), H = Math.max(1, Math.round(img.naturalHeight * sc));
+  const kx = S.w / W, ky = S.h / H;
+  target.width = W; target.height = H;
+  const c = target.getContext('2d');
+  c.clearRect(0, 0, W, H);
+
+  let chars = state.aset === 'custom' ? Array.from($('a-chars').value) : Array.from(CHARSETS[state.aset]);
+  if (chars.length < 2) chars = chars.length ? [chars[0], ' '] : Array.from(CHARSETS.classic);
+  const n = chars.length;
+
+  const ch = W * (0.006 + v('a-size') / 100 * 0.05);
+  const st = v('a-stretch'), ratio = st >= 0 ? 1 + st / 25 : 1 / (1 + -st / 25);
+  const cw = ch * 0.6 * ratio;
+  const contrast = 1 + v('a-contrast') / 100 * 0.95 + (v('a-contrast') > 0 ? v('a-contrast') / 100 * 2 : 0);
+  const bright = v('a-brightness') / 200, gamma = Math.pow(2, v('a-gamma') / 50);
+  const noise = v('a-noise') / 100, inv = state.ainv === 'on';
+  const fg = hexRgb($('a-fg').value), bg = hexRgb($('a-bg').value);
+  const dir = state.adir, g = Math.pow(2, (50 - v('a-falloff')) / 25);
+  const along = (x, y) => clamp(dir === 'right' ? x / W : dir === 'left' ? 1 - x / W : dir === 'top' ? 1 - y / H : y / H, 0, 1);
+  const gradDef = dir === 'right' ? [0, 0, W, 0] : dir === 'left' ? [W, 0, 0, 0] : dir === 'top' ? [0, H, 0, 0] : [0, 0, 0, H];
+  const fade = layerFn => { // draws a layer onto a temp canvas and masks it with the reveal gradient
+    const t = document.createElement('canvas'); t.width = W; t.height = H;
+    const x = t.getContext('2d'); layerFn(x);
+    x.globalCompositeOperation = 'destination-in';
+    const gr = x.createLinearGradient(...gradDef);
+    for (let k = 0; k <= 16; k++) gr.addColorStop(k / 16, `rgba(0,0,0,${Math.pow(k / 16, g)})`);
+    x.fillStyle = gr; x.fillRect(0, 0, W, H);
+    return t;
+  };
+
+  if (dir !== 'none') {
+    // original image underneath, fading out toward the ASCII side
+    const u = document.createElement('canvas'); u.width = W; u.height = H;
+    const ux = u.getContext('2d'); ux.drawImage(img, 0, 0, W, H);
+    ux.globalCompositeOperation = 'destination-in';
+    const gr = ux.createLinearGradient(...gradDef);
+    for (let k = 0; k <= 16; k++) gr.addColorStop(k / 16, `rgba(0,0,0,${1 - Math.pow(k / 16, g)})`);
+    ux.fillStyle = gr; ux.fillRect(0, 0, W, H);
+    c.drawImage(u, 0, 0);
+  }
+  if (state.abg === 'solid') {
+    const rgb = `rgb(${bg.join(',')})`;
+    if (dir === 'none') { c.fillStyle = rgb; c.fillRect(0, 0, W, H); }
+    else c.drawImage(fade(x => { x.fillStyle = rgb; x.fillRect(0, 0, W, H); }), 0, 0);
+  }
+
+  c.font = `${state.aweight} ${ch * 1.05}px ${FONTS[state.afont]}`;
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  const text = document.createElement('canvas'); text.width = W; text.height = H;
+  const tc = dir === 'none' ? c : text.getContext('2d');
+  if (tc !== c) { tc.font = c.font; tc.textAlign = 'center'; tc.textBaseline = 'middle'; }
+
+  for (let j = 0; j * ch < H; j++) for (let i = 0; i * cw < W; i++) {
+    const X = i * cw, Y = j * ch, cx = X + cw / 2, cy = Y + ch / 2;
+    sample(S, X * kx, Y * ky, (X + cw) * kx, (Y + ch) * ky);
+    let l = (0.2126 * col[0] + 0.7152 * col[1] + 0.0722 * col[2]) / 255;
+    l = clamp((l - 0.5) * contrast + 0.5 + bright, 0, 1);
+    l = Math.pow(l, gamma);
+    if (inv) l = 1 - l;
+    if (noise) l = clamp(l + (hash(i, j) - 0.5) * noise, 0, 1);
+    const ci = clamp(Math.floor(l * n), 0, n - 1); // index 0 = densest glyph, used for dark pixels
+    const glyph = chars[ci];
+    if (glyph === ' ') continue;
+    if (state.acolor === 'original') tc.fillStyle = `rgb(${col[0] | 0},${col[1] | 0},${col[2] | 0})`;
+    else if (state.acolor === 'gradient') {
+      tc.fillStyle = `rgb(${bg.map((b, k) => (b + (fg[k] - b) * (1 - l)) | 0).join(',')})`;
+    } else tc.fillStyle = `rgb(${fg.join(',')})`;
+    tc.fillText(glyph, cx, cy);
+  }
+  if (tc !== c) {
+    // mask the glyph layer with the reveal gradient
+    c.drawImage(fade(x => x.drawImage(text, 0, 0)), 0, 0);
+  }
+}
+
+// ---------- Gradient ----------
+const GRADIENT_ASPECTS = { '1:1': [1, 1], '4:3': [4, 3], '16:9': [16, 9], '9:16': [9, 16] };
+function renderGradient(target, maxEdge) {
+  const [aw, ah] = GRADIENT_ASPECTS[state.gaspect];
+  const sc = maxEdge / Math.max(aw, ah);
+  const W = Math.round(aw * sc), H = Math.round(ah * sc);
+  target.width = W; target.height = H;
+  const c = target.getContext('2d', { willReadFrequently: true });
+  const cols = state.gcolors, n = cols.length;
+  const spread = v('g-spread') / 100, cx = v('g-cx') / 100 * W, cy = v('g-cy') / 100 * H;
+  const ang = v('g-angle') * Math.PI / 180;
+  const stops = (g, loop) => { cols.forEach((col, i) => g.addColorStop(i / (n - (loop ? 0 : 1)), col)); if (loop) g.addColorStop(1, cols[0]); return g; };
+
+  if (state.gtype === 'linear') {
+    const dx = Math.sin(ang), dy = -Math.cos(ang), half = (Math.abs(W * dx) + Math.abs(H * dy)) / 2 * spread;
+    c.fillStyle = stops(c.createLinearGradient(W / 2 - dx * half, H / 2 - dy * half, W / 2 + dx * half, H / 2 + dy * half));
+    c.fillRect(0, 0, W, H);
+  } else if (state.gtype === 'radial') {
+    const r = Math.hypot(W, H) / 2 * spread;
+    // reversed so the first color is in the center
+    const g = c.createRadialGradient(cx, cy, 0, cx, cy, r);
+    cols.forEach((col, i) => g.addColorStop(i / (n - 1), col));
+    c.fillStyle = g; c.fillRect(0, 0, W, H);
+  } else if (state.gtype === 'conic') {
+    c.fillStyle = stops(c.createConicGradient(ang - Math.PI / 2, cx, cy), true);
+    c.fillRect(0, 0, W, H);
+  } else { // mesh: soft color blobs at seeded positions
+    c.fillStyle = cols[0]; c.fillRect(0, 0, W, H);
+    const count = Math.max(5, n * 2), seed = v('g-seed') * 977, R = Math.max(W, H) * (0.25 + v('g-soft') / 100 * 0.6);
+    for (let k = 0; k < count; k++) {
+      const x = hash(k, seed) * W, y = hash(k + 100, seed) * H, col = cols[k % n];
+      const g = c.createRadialGradient(x, y, 0, x, y, R * (0.7 + hash(k + 200, seed) * 0.6));
+      const rgb = hexRgb(col).join(',');
+      g.addColorStop(0, `rgba(${rgb},1)`); g.addColorStop(1, `rgba(${rgb},0)`);
+      c.fillStyle = g; c.fillRect(0, 0, W, H);
+    }
+  }
+
+  // grain
+  const amt = v('g-grain') / 100 * 110;
+  if (amt > 0) {
+    const block = Math.max(1, Math.round(W / PREVIEW_MAX * (1 + v('g-grainsize') / 20)));
+    const img = c.getImageData(0, 0, W, H), d = img.data, mono = state.ggrain === 'mono';
+    const bw = Math.ceil(W / block);
+    for (let y = 0; y < H; y++) {
+      const by = (y / block) | 0;
+      for (let x = 0; x < W; x++) {
+        const bi = by * bw + ((x / block) | 0), i = (y * W + x) * 4;
+        const n1 = (hash(bi, 11) + hash(bi, 12) - 1) * amt;
+        if (mono) { d[i] += n1; d[i + 1] += n1; d[i + 2] += n1; }
+        else {
+          d[i] += n1; d[i + 1] += (hash(bi, 13) + hash(bi, 14) - 1) * amt; d[i + 2] += (hash(bi, 15) + hash(bi, 16) - 1) * amt;
+        }
+      }
+    }
+    c.putImageData(img, 0, 0);
+  }
+}
+
+// ---------- Dispatch ----------
+function render(target, maxEdge) { ({ blur: renderBlur, pixel: renderPixel, ascii: renderAscii, gradient: renderGradient })[state.tool](target, maxEdge); }
+let raf = 0;
+function ready() { return state.tool === 'gradient' || !!state.img; }
+function schedule() {
+  if (!ready() || raf) return;
+  raf = requestAnimationFrame(() => { raf = 0; render(cv, PREVIEW_MAX); });
+}
+$('download').addEventListener('click', () => {
+  if (!ready()) return;
+  const c = document.createElement('canvas');
+  render(c, state.tool === 'gradient' ? 3000 : EXPORT_MAX);
+  c.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = { blur: 'motion-blur', pixel: 'pixelate', ascii: 'ascii', gradient: 'gradient' }[state.tool] + '.png'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }, 'image/png');
+});
+
+buildColors(); refreshTabs(); refreshSegs(); refreshOutputs();
+</script>
+</body>
+</html>
